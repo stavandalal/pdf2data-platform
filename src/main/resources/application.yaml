@@ -24,7 +24,7 @@ spring:
 
 gemini:
   api:
-    key: ""
+    key:
 
 server:
   port: 8080
