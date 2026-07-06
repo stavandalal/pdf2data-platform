@@ -44,7 +44,7 @@ public class AuthService {
             throw new RuntimeException("Error: Email is already in use!");
         }
 
-        final String MASTER_ADMIN_SECRET = "Super_Secret_Admin";
+        final String MASTER_ADMIN_SECRET = "admin@123";
         UserRole assignedRole = UserRole.ROLE_USER;
 
         if (registrationRequest.getAdminSecretKey() != null && !registrationRequest.getAdminSecretKey().isEmpty()) {

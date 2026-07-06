@@ -5,7 +5,7 @@ spring:
   datasource:
     url: jdbc:mysql://localhost:3306/pdf2data_db?createDatabaseIfNotExist=true
     username: root
-    password: Stavan@1996
+    password: vedant123
     driver-class-name: com.mysql.cj.jdbc.Driver
 
   jpa:
@@ -21,6 +21,10 @@ spring:
     mongodb:
       uri: mongodb://localhost:27017/pdf2data_nosql
 
+
+gemini:
+  api:
+    key: "AQ.Ab8RN6KsVh_l1dsQU124UM6zby1YhJX9k-57i4PlBiH8-LOAWQ"
 
 server:
   port: 8080
