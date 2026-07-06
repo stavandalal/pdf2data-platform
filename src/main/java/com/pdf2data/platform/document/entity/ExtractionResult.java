@@ -15,12 +15,10 @@ public class ExtractionResult {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    private String invoiceNumber;
-    private String totalAmount;
-    private String invoiceDate;
-
+    @Column(columnDefinition = "MEDIUMTEXT")
+    private String rawJsonData;
 
     @OneToOne
-    @JoinColumn(name = "document_id")
+    @JoinColumn(name = "document_id", nullable = false)
     private Document document;
 }
