@@ -5,12 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.pdf2data.platform.auth.entity.User;
 import com.pdf2data.platform.auth.repository.UserRepository;
 import com.pdf2data.platform.document.entity.Document;
-import com.pdf2data.platform.document.entity.ExtractionResult;
-import com.pdf2data.platform.document.entity.MongoExtractionResult;
-import com.pdf2data.platform.document.repository.DocumentRepository;
-import com.pdf2data.platform.document.repository.ExtractionResultRepository;
-import com.pdf2data.platform.document.repository.MongoExtractionRepository;
 import com.pdf2data.platform.document.service.AiExtractionService;
+import com.pdf2data.platform.document.service.DocumentStorageService;
 import com.pdf2data.platform.document.service.ExtractionService;
 import com.pdf2data.platform.document.service.FileStorageService;
 import com.pdf2data.platform.document.service.OcrService;
@@ -20,10 +16,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.nio.charset.StandardCharsets;
-import java.time.LocalDateTime;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.*;
 
 @RestController
 @RequestMapping("/api/documents")
@@ -32,138 +25,119 @@ public class FileUploadController {
 
     private final FileStorageService fileStorageService;
     private final UserRepository userRepository;
-    private final DocumentRepository documentRepository;
-    private final ExtractionResultRepository extractionResultRepository;
-    private final MongoExtractionRepository mongoExtractionRepository;
     private final ExtractionService extractionService;
     private final OcrService ocrService;
     private final AiExtractionService aiExtractionService;
+    private final DocumentStorageService documentStorageService;
+
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    public FileUploadController(FileStorageService fileStorageService,
-                                UserRepository userRepository,
-                                DocumentRepository documentRepository,
-                                ExtractionResultRepository extractionResultRepository,
-                                MongoExtractionRepository mongoExtractionRepository,
-                                ExtractionService extractionService,
-                                OcrService ocrService,
-                                AiExtractionService aiExtractionService) {
+    public FileUploadController(
+            FileStorageService fileStorageService,
+            UserRepository userRepository,
+            ExtractionService extractionService,
+            OcrService ocrService,
+            AiExtractionService aiExtractionService,
+            DocumentStorageService documentStorageService
+    ) {
         this.fileStorageService = fileStorageService;
         this.userRepository = userRepository;
-        this.documentRepository = documentRepository;
-        this.extractionResultRepository = extractionResultRepository;
-        this.mongoExtractionRepository = mongoExtractionRepository;
         this.extractionService = extractionService;
         this.ocrService = ocrService;
         this.aiExtractionService = aiExtractionService;
+        this.documentStorageService = documentStorageService;
     }
 
     @PostMapping("/upload")
     public ResponseEntity<?> uploadFile(
             @RequestParam("file") MultipartFile file,
-            @RequestParam(value = "prompt", defaultValue = "Extract invoiceNumber, totalAmount, and invoiceDate from this text") String prompt) {
+            @RequestParam("prompt") String prompt
+    ) {
 
         try {
-            String usernameOrEmail = SecurityContextHolder.getContext().getAuthentication().getName();
 
-            User user = userRepository.findByUsername(usernameOrEmail)
-                    .or(() -> userRepository.findByEmail(usernameOrEmail))
-                    .orElseThrow(() -> new RuntimeException("User context not found: " + usernameOrEmail));
+            String email = SecurityContextHolder
+                    .getContext()
+                    .getAuthentication()
+                    .getName();
 
-            String path = fileStorageService.saveFile(file);
+            User user = userRepository.findByEmail(email)
+                    .orElseThrow(() ->
+                            new RuntimeException("User not found"));
 
-            // Apache PDFBox
-            String extractedText = extractionService.extractTextFromPDF(path);
+            String filePath = fileStorageService.saveFile(file);
 
-            if (extractedText == null || extractedText.trim().isEmpty() || extractedText.trim().length() < 10) {
-                extractedText = ocrService.extractTextFromImage(path);
+            String fileName = Objects.requireNonNull(file.getOriginalFilename()).toLowerCase();
+
+            String extractedText;
+
+            if (fileName.endsWith(".pdf")) {
+
+                extractedText =
+                        extractionService.extractTextFromPDF(filePath);
+
+            } else {
+
+                extractedText =
+                        ocrService.extractTextFromImage(filePath);
+
             }
 
-            byte[] rawBytes = extractedText.getBytes(StandardCharsets.UTF_8);
-            String sanitizedText = new String(rawBytes, StandardCharsets.UTF_8);
+            System.out.println("========== OCR TEXT ==========");
+            System.out.println(extractedText);
+            System.out.println("==============================");
 
-            String validatedPrompt = prompt + "\n\nCRITICAL MANDATE: Only output values explicitly confirmed in the text. " +
-                    "If a value is not mentioned or unknown, set its value strictly to null. Do not guess or hallucinate details.";
+            String aiResponse =
+                    aiExtractionService.extractDataWithAI(
+                            extractedText,
+                            prompt
+                    );
 
-            String structuredData = aiExtractionService.extractDataWithAI(sanitizedText, validatedPrompt);
-
-            if (structuredData.startsWith("Error")) {
-                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                        .body("AI Pipeline Error: " + structuredData);
-            }
+            Map<String, Object> parsedFields =
+                    objectMapper.readValue(
+                            sanitizeJson(aiResponse),
+                            new TypeReference<Map<String, Object>>() {
+                            });
 
             Document document = Document.builder()
                     .fileName(file.getOriginalFilename())
-                    .filePath(path)
+                    .filePath(filePath)
                     .user(user)
                     .build();
-            Document savedDoc = documentRepository.save(document);
 
-            ExtractionResult relationalResult = ExtractionResult.builder()
-                    .rawJsonData(structuredData)
-                    .document(savedDoc)
-                    .build();
-            extractionResultRepository.save(relationalResult);
+            documentStorageService.saveAll(
+                    document,
+                    aiResponse,
+                    parsedFields
+            );
 
-            String cleanedJson = sanitizeJson(structuredData);
+            Map<String, Object> response = new HashMap<>();
 
-            Map<String, Object> parsedFieldsMap;
-            try {
-                parsedFieldsMap = objectMapper.readValue(cleanedJson, new TypeReference<Map<String, Object>>() {});
-            } catch (Exception parseException) {
+            response.put("documentId", document.getId());
+            response.put("data", parsedFields);
 
-                parsedFieldsMap = new HashMap<>();
-                parsedFieldsMap.put("rawExtractedMessage", structuredData);
-                parsedFieldsMap.put("parseError", parseException.getMessage());
-            }
-
-            MongoExtractionResult mongoResult = MongoExtractionResult.builder()
-                    .documentId(savedDoc.getId())
-                    .fileName(savedDoc.getFileName())
-                    .rawJsonData(structuredData)
-                    .parsedFields(parsedFieldsMap)
-                    .processedAt(LocalDateTime.now())
-                    .build();
-            mongoExtractionRepository.save(mongoResult);
-
-            Map<String, Object> responsePayload = new HashMap<>();
-            responsePayload.put("message", "File processed successfully. Stored in relational and NoSQL databases.");
-            responsePayload.put("documentId", savedDoc.getId());
-            responsePayload.put("mongoId", mongoResult.getId());
-            responsePayload.put("structuredAiResponse", parsedFieldsMap);
-
-            return ResponseEntity.ok(responsePayload);
+            return ResponseEntity.ok(response);
 
         } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Error processing document extraction: " + e.getMessage());
+
+            return ResponseEntity
+                    .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(e.getMessage());
+
         }
+
     }
 
     private String sanitizeJson(String json) {
-        if (json == null) {
+
+        if (json == null)
             return "{}";
-        }
-        String cleaned = json.trim();
-        if (cleaned.startsWith("```")) {
-            int firstNewline = cleaned.indexOf('\n');
-            if (firstNewline != -1) {
-                cleaned = cleaned.substring(firstNewline + 1);
-            } else {
-                cleaned = cleaned.substring(3);
-            }
-        }
-        if (cleaned.endsWith("```")) {
-            cleaned = cleaned.substring(0, cleaned.length() - 3);
-        }
-        return cleaned.trim();
+
+        return json
+                .replaceAll("^```json", "")
+                .replaceAll("^```", "")
+                .replaceAll("```$", "")
+                .trim();
     }
 
-    @GetMapping("/{documentId}/result")
-    public ResponseEntity<?> getDocumentExtractionResult(@PathVariable Long documentId) {
-        return mongoExtractionRepository.findByDocumentId(documentId)
-                .map(result -> ResponseEntity.ok(result.getParsedFields()))
-                .orElseGet(() -> ResponseEntity.status(HttpStatus.NOT_FOUND)
-                        .body(Map.of("message", "Extraction record not found for the given document ID.")));
-    }
 }
