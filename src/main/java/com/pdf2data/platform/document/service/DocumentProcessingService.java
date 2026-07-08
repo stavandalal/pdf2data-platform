@@ -55,9 +55,18 @@ public class DocumentProcessingService {
         executorService.submit(() -> {
             try {
 
-                String rawText = extractionService.extractTextFromPDF(document.getFilePath());
-                if (rawText == null || rawText.trim().isEmpty() || rawText.trim().length() < 10) {
+                String rawText;
+
+                String fileName = document.getFileName().toLowerCase();
+
+                if (fileName.endsWith(".pdf")) {
+
+                    rawText = extractionService.extractTextFromPDF(document.getFilePath());
+
+                } else {
+
                     rawText = ocrService.extractTextFromImage(document.getFilePath());
+
                 }
 
 
