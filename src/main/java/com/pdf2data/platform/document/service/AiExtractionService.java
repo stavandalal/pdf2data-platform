@@ -18,7 +18,17 @@ public class AiExtractionService {
     private String modelName;
 
     public String extractDataWithAI(String text, String userPrompt) {
-        String url = "https://generativelanguage.googleapis.com/v1beta/models/" + modelName + ":generateContent?key=" + apiKey;
+        System.out.println("====================================");
+        System.out.println("API KEY = " + apiKey);
+        System.out.println("MODEL = " + modelName);
+        System.out.println("====================================");
+
+        String url = "https://generativelanguage.googleapis.com/v1beta/models/"
+                + modelName
+                + ":generateContent?key="
+                + apiKey;
+
+        System.out.println("URL = " + url);
 
         RestTemplate restTemplate = new RestTemplate();
         Map<String, Object> body = new HashMap<>();
@@ -41,9 +51,13 @@ public class AiExtractionService {
 
         try {
             ResponseEntity<String> response = restTemplate.postForEntity(url, entity, String.class);
+            System.out.println("========= GEMINI RESPONSE =========");
+            System.out.println(response.getBody());
+            System.out.println("===================================");
             JsonNode rootNode = new ObjectMapper().readTree(response.getBody());
             return rootNode.path("candidates").get(0).path("content").path("parts").get(0).path("text").asText().trim();
         } catch (Exception e) {
+            e.printStackTrace();
             return "Error: " + e.getMessage();
         }
     }
