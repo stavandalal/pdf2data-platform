@@ -9,7 +9,7 @@ import com.pdf2data.platform.document.service.AiExtractionService;
 import com.pdf2data.platform.document.service.DocumentStorageService;
 import com.pdf2data.platform.document.service.ExtractionService;
 import com.pdf2data.platform.document.service.FileStorageService;
-import com.pdf2data.platform.document.service.OcrService;
+import com.pdf2data.platform.document.service.ImageOcrProcessor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -26,7 +26,7 @@ public class FileUploadController {
     private final FileStorageService fileStorageService;
     private final UserRepository userRepository;
     private final ExtractionService extractionService;
-    private final OcrService ocrService;
+    private final ImageOcrProcessor ocrService;
     private final AiExtractionService aiExtractionService;
     private final DocumentStorageService documentStorageService;
 
@@ -36,7 +36,7 @@ public class FileUploadController {
             FileStorageService fileStorageService,
             UserRepository userRepository,
             ExtractionService extractionService,
-            OcrService ocrService,
+            ImageOcrProcessor ocrService,
             AiExtractionService aiExtractionService,
             DocumentStorageService documentStorageService
     ) {

@@ -24,7 +24,7 @@ spring:
 gemini:
   api:
     key:
-    model: gemini-2.5-flash
+    model:
 
 
 server:
