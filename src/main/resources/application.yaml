@@ -1,0 +1,31 @@
+spring:
+  application:
+    name: platform
+
+  datasource:
+    url: jdbc:mysql://localhost:3306/pdf2data_db?createDatabaseIfNotExist=true
+    username: root
+    password:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQLDialect
+    open-in-view: false
+
+  data:
+    mongodb:
+      uri: mongodb://localhost:27017/pdf2data_nosql
+
+gemini:
+  api:
+    key:
+    model:
+
+
+server:
+  port: 8080
